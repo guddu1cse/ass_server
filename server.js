@@ -6,7 +6,11 @@ const Question = require('./models/Question');
 const app = express();
 
 // middleware
-app.use(cors());
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+}));
 app.use(express.json());
 
 // db config
@@ -83,6 +87,14 @@ app.post('/api/questions', async (req, res) => {
         console.error('Error adding question:', err);
         res.status(500).json({ error: 'Error adding question' });
     }
+});
+
+app.get('/api/test', (req, res) => {
+    res.json({
+        message: 'Server is running',
+        database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+        timestamp: new Date().toISOString()
+    });
 });
 
 const PORT = process.env.PORT || 5000;
