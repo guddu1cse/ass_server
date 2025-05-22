@@ -14,7 +14,10 @@ app.use(cors({
 app.use(express.json());
 
 // db config
-mongoose.connect('mongodb+srv://guddu1cse:D!xncUC4HdmeLh!@cluster0.ooakn6b.mongodb.net/db?retryWrites=true&w=majority&appName=Cluster0')
+mongoose.connect('mongodb+srv://guddu1cse:D!xncUC4HdmeLh!@cluster0.ooakn6b.mongodb.net/db?retryWrites=true&w=majority&appName=Cluster0', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+})
     .then(() => console.log('db connection successful'))
     .catch(err => console.error('unable to connect to MongoDB', err));
 
