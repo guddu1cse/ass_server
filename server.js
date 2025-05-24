@@ -114,17 +114,22 @@ app.get('/api/up', (req, res) => {
     });
 });
 
+function convertIst(utcTime) {
+    const date = new Date(utcTime);
+    return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+}
+
 const url = 'https://ass-server-4qwz.onrender.com/api/up';
 async function fetchData() {
     try {
-        serverStartRequestTime = new Date().toISOString();
+        serverStartRequestTime = convertIst(new Date().toISOString());
         await fetch(url);
-        serverStartedResponseTime = new Date().toISOString();
+        serverStartedResponseTime = convertIst(new Date().toISOString());
         serverError = null;
         serverErrorTime = null;
     } catch (err) {
         serverError = err;
-        serverErrorTime = new Date().toISOString();
+        serverErrorTime = convertIst(new Date().toISOString());
     } finally {
         setTimeout(fetchData, 60 * 1000 * 5); //5 minutes
     }
