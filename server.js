@@ -4,6 +4,10 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const Question = require('./models/Question');
 const app = express();
+let serverStartRequestTime = null;
+let serverStartedResponseTime = null;
+let serverErrorTime = null;
+let serverError = null;
 
 // middleware
 app.use(cors({
@@ -96,11 +100,38 @@ app.get('/api/test', (req, res) => {
     res.json({
         message: 'Server is running',
         database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+        serverStartTime: serverStartRequestTime,
+        serverStartResponseTime: serverStartedResponseTime,
+        serverError: serverError,
+        serverErrorTime: serverErrorTime,
         timestamp: new Date().toISOString()
     });
 });
 
+app.get('/api/up', (req, res) => {
+    res.json({
+        message: 'Server is running',
+    });
+});
+
+const url = 'https://ass-server-4qwz.onrender.com/api/up';
+async function fetchData() {
+    try {
+        serverStartRequestTime = new Date().toISOString();
+        await fetch(url);
+        serverStartedResponseTime = new Date().toISOString();
+        serverError = null;
+        serverErrorTime = null;
+    } catch (err) {
+        serverError = err;
+        serverErrorTime = new Date().toISOString();
+    } finally {
+        setTimeout(fetchData, 60 * 1000 * 5); //5 minutes
+    }
+}
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
+    fetchData();
 }); 
