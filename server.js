@@ -3,6 +3,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const Question = require('./models/Question');
+const Application = require('./models/Application');
+const { sendNotificationEmail } = require('./utils/mailService');
 const app = express();
 let serverStartRequestTime = null;
 let serverStartedResponseTime = null;
@@ -18,7 +20,7 @@ app.use(cors({
 app.use(express.json());
 
 // db config
-mongoose.connect('mongodb+srv://guddu1cse:D!xncUC4HdmeLh!@cluster0.ooakn6b.mongodb.net/db?retryWrites=true&w=majority&appName=Cluster0', {
+mongoose.connect(`${process.env.MONGODB_URI}`, {
     useNewUrlParser: true,
     useUnifiedTopology: true
 })
@@ -119,10 +121,11 @@ function convertIst(utcTime) {
     return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 }
 
-const url = 'https://ass-server-4qwz.onrender.com/api/up';
+const url = process.env.BASE_URL + '/api/up';
 async function fetchData() {
     try {
         serverStartRequestTime = convertIst(new Date().toISOString());
+        console.log('ping server: ', url);
         await fetch(url);
         serverStartedResponseTime = convertIst(new Date().toISOString());
         serverError = null;
@@ -134,6 +137,64 @@ async function fetchData() {
         setTimeout(fetchData, 60 * 1000 * 5); //5 minutes
     }
 }
+
+app.post('/api/application', async (req, res) => {
+    try {
+        const {
+            description,
+            email,
+            hrName,
+            organization,
+            phone,
+            role,
+            salary
+        } = req.body;
+
+        if (!description || !email || !hrName || !organization || !phone || !role) {
+            return res.status(400).json({ error: 'All required fields must be provided' });
+        }
+
+        const newApplication = new Application({
+            description,
+            email,
+            hrName,
+            organization,
+            phone,
+            role,
+            salary: salary || ""
+        });
+
+        const savedApplication = await newApplication.save();
+        console.log('Application submitted successfully:', savedApplication);
+
+        // Send notification email asynchronously
+        const emailSubject = 'New Job Application Received';
+        const emailMessage = `
+            A new job application has been received:
+            
+            Role: ${role}
+            Organization: ${organization}
+            HR Name: ${hrName}
+            Email: ${email}
+            Phone: ${phone}
+            Salary: ${salary || 'Not specified'}
+            
+            Description:
+            ${description}
+        `;
+
+        // Send email in background without awaiting
+        sendNotificationEmail(emailSubject, emailMessage)
+            .then(() => console.log('Email sent successfully'))
+            .catch(err => console.error('Error sending email:', err));
+
+        // Send response immediately
+        res.status(204).send();
+    } catch (err) {
+        console.error('Error submitting application:', err);
+        res.status(500).json({ error: 'Error submitting application' });
+    }
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
