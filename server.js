@@ -140,6 +140,22 @@ async function fetchData() {
     }
 }
 
+async function getGeoLocation(ip) {
+    try {
+        const res = await fetch(`https://ipapi.co/${ip}/json/`);
+        const data = await res.json();
+        return {
+            country: data.country_name,
+            city: data.city,
+            region: data.region,
+            isp: data.org
+        };
+    } catch (err) {
+        console.error('Error fetching geolocation:', err.message);
+        return null;
+    }
+}
+
 app.post('/api/application', async (req, res) => {
     try {
         const {
@@ -207,28 +223,30 @@ app.post('/api/track-visit', async (req, res) => {
 
         const userAgent = req.headers['user-agent'];
         const cleanIp = ipAddress.replace(/^::ffff:/, '');
-        const geo = geoip.lookup(cleanIp);
+
+        // Get location using ipapi.co
+        const locationData = await getGeoLocation(cleanIp);
 
         console.log('Request details:', {
             headers: req.headers,
             ipAddress: ipAddress,
             cleanIp: cleanIp,
-            geo: geo
+            location: locationData
         });
 
         const newVisit = new Visit({
             ipAddress: cleanIp,
             userAgent,
             location: {
-                country: geo?.country || 'Unknown',
-                city: geo?.city || 'Unknown',
-                region: geo?.region || 'Unknown'
+                country: locationData?.country || 'Unknown',
+                city: locationData?.city || 'Unknown',
+                region: locationData?.region || 'Unknown'
             }
         });
 
         console.log('Saving visit:', {
             ip: cleanIp,
-            location: geo || 'No location data available'
+            location: locationData || 'No location data available'
         });
 
         await newVisit.save();
@@ -236,7 +254,7 @@ app.post('/api/track-visit', async (req, res) => {
             message: 'Visit tracked successfully',
             visitData: {
                 ip: cleanIp,
-                location: geo || 'No location data available'
+                location: locationData || 'No location data available'
             }
         });
     } catch (err) {
