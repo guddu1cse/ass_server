@@ -236,39 +236,52 @@ app.post('/api/track-visit', async (req, res) => {
             req.socket.remoteAddress;
 
         const userAgent = req.headers['user-agent'];
+        const origin = req.headers['origin'] || req.headers['referer'] || 'Unknown';
         const cleanIp = ipAddress.replace(/^::ffff:/, '');
 
         // Get location using ipapi.co
         const locationData = await getGeoLocation(cleanIp);
 
-        console.log('Request details:', {
-            headers: req.headers,
-            ipAddress: ipAddress,
-            cleanIp: cleanIp,
+        // Try to find existing visit record
+        let visit = await Visit.findOne({ ipAddress: cleanIp });
+
+        if (visit) {
+            // Update existing visit
+            visit.visitCount += 1;
+            visit.lastVisit = new Date();
+            visit.userAgent = userAgent; // Update user agent
+            visit.origin = origin;
+            await visit.save();
+        } else {
+            // Create new visit
+            visit = new Visit({
+                ipAddress: cleanIp,
+                userAgent,
+                origin,
+                location: {
+                    country: locationData?.country || 'Unknown',
+                    city: locationData?.city || 'Unknown',
+                    region: locationData?.region || 'Unknown',
+                    isp: locationData?.isp || 'Unknown'
+                }
+            });
+            await visit.save();
+        }
+
+        console.log('Visit tracked:', {
+            ip: cleanIp,
+            visitCount: visit.visitCount,
+            origin: visit.origin,
             location: locationData
         });
 
-        const newVisit = new Visit({
-            ipAddress: cleanIp,
-            userAgent,
-            location: {
-                country: locationData?.country || 'Unknown',
-                city: locationData?.city || 'Unknown',
-                region: locationData?.region || 'Unknown'
-            }
-        });
-
-        console.log('Saving visit:', {
-            ip: cleanIp,
-            location: locationData || 'No location data available'
-        });
-
-        await newVisit.save();
         res.status(201).json({
             message: 'Visit tracked successfully',
             visitData: {
                 ip: cleanIp,
-                location: locationData || 'No location data available'
+                visitCount: visit.visitCount,
+                origin: visit.origin,
+                location: locationData
             }
         });
     } catch (err) {

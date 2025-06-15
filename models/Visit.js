@@ -3,7 +3,8 @@ const mongoose = require('mongoose');
 const visitSchema = new mongoose.Schema({
     ipAddress: {
         type: String,
-        required: true
+        required: true,
+        unique: true
     },
     userAgent: {
         type: String,
@@ -16,7 +17,20 @@ const visitSchema = new mongoose.Schema({
     location: {
         country: String,
         city: String,
-        region: String
+        region: String,
+        isp: String
+    },
+    visitCount: {
+        type: Number,
+        default: 1
+    },
+    origin: {
+        type: String,
+        default: 'Unknown'
+    },
+    lastVisit: {
+        type: Date,
+        default: Date.now
     }
 });
 
