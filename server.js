@@ -2,8 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const geoip = require('geoip-lite');
 const Question = require('./models/Question');
 const Application = require('./models/Application');
+const Visit = require('./models/Visit');
 const { sendNotificationEmail } = require('./utils/mailService');
 const app = express();
 let serverStartRequestTime = null;
@@ -193,6 +195,53 @@ app.post('/api/application', async (req, res) => {
     } catch (err) {
         console.error('Error submitting application:', err);
         res.status(500).json({ error: 'Error submitting application' });
+    }
+});
+
+app.post('/api/track-visit', async (req, res) => {
+    try {
+        const ipAddress = req.headers['x-forwarded-for'] ||
+            req.headers['x-real-ip'] ||
+            req.connection.remoteAddress ||
+            req.socket.remoteAddress;
+
+        const userAgent = req.headers['user-agent'];
+        const cleanIp = ipAddress.replace(/^::ffff:/, '');
+        const geo = geoip.lookup(cleanIp);
+
+        console.log('Request details:', {
+            headers: req.headers,
+            ipAddress: ipAddress,
+            cleanIp: cleanIp,
+            geo: geo
+        });
+
+        const newVisit = new Visit({
+            ipAddress: cleanIp,
+            userAgent,
+            location: {
+                country: geo?.country || 'Unknown',
+                city: geo?.city || 'Unknown',
+                region: geo?.region || 'Unknown'
+            }
+        });
+
+        console.log('Saving visit:', {
+            ip: cleanIp,
+            location: geo || 'No location data available'
+        });
+
+        await newVisit.save();
+        res.status(201).json({
+            message: 'Visit tracked successfully',
+            visitData: {
+                ip: cleanIp,
+                location: geo || 'No location data available'
+            }
+        });
+    } catch (err) {
+        console.error('Error tracking visit:', err);
+        res.status(500).json({ error: 'Error tracking visit' });
     }
 });
 
