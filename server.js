@@ -142,17 +142,27 @@ async function fetchData() {
 
 async function getGeoLocation(ip) {
     try {
-        const res = await fetch(`https://ipapi.co/${ip}/json/`);
-        const data = await res.json();
+        const cleanIp = ip.split(',')[0].trim().replace(/^::ffff:/, '');
+        const response = await fetch(`https://ipapi.co/${cleanIp}/json/`);
+        if (!response.ok) {
+            throw new Error(`API request failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
         return {
-            country: data.country_name,
-            city: data.city,
-            region: data.region,
-            isp: data.org
+            country: data.country_name || 'Unknown',
+            city: data.city || 'Unknown',
+            region: data.region || 'Unknown',
+            isp: data.org || 'Unknown'
         };
     } catch (err) {
         console.error('Error fetching geolocation:', err.message);
-        return null;
+        return {
+            country: 'Unknown',
+            city: 'Unknown',
+            region: 'Unknown',
+            isp: 'Unknown'
+        };
     }
 }
 
