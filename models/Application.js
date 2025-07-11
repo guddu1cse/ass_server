@@ -44,6 +44,10 @@ const applicationSchema = new mongoose.Schema({
     respondTime: {
         type: Date,
         default: null
+    },
+    origin: {
+        type: String,
+        default: ""
     }
 }, {
     timestamps: true

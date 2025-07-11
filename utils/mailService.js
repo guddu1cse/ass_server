@@ -12,11 +12,11 @@ const transporter = nodemailer.createTransport({
 });
 
 // Function to send notification email
-const sendNotificationEmail = async (subject, message) => {
+const sendNotificationEmail = async (subject, message, recipient) => {
     try {
         const mailOptions = {
             from: process.env.MAIL_FROM,
-            to: process.env.MAIL_TO,
+            to: recipient,
             subject: subject,
             text: message,
             html: `<div style="font-family: Arial, sans-serif; padding: 20px;">

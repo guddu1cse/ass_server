@@ -186,6 +186,17 @@ app.post('/api/application', async (req, res) => {
             return res.status(400).json({ error: 'All required fields must be provided' });
         }
 
+        const originHeader = req.headers['origin'] || req.headers['referer'] || '';
+        let recipient = process.env.MAIL_TO;
+        let recipientName = '';
+        if (originHeader.includes('guddu')) {
+            recipient = process.env.MAIL_TO_GUDDU;
+            recipientName = 'Guddu';
+        } else if (originHeader.includes('lucky')) {
+            recipient = process.env.MAIL_TO_LUCY;
+            recipientName = 'Lucky';
+        }
+
         const newApplication = new Application({
             description,
             email,
@@ -193,7 +204,8 @@ app.post('/api/application', async (req, res) => {
             organization,
             phone,
             role,
-            salary: salary || ""
+            salary: salary || "",
+            origin: originHeader
         });
 
         const savedApplication = await newApplication.save();
@@ -201,7 +213,9 @@ app.post('/api/application', async (req, res) => {
 
         // Send notification email asynchronously
         const emailSubject = 'New Job Application Received';
+        const greeting = recipientName ? `Hi ${recipientName},\n\n` : 'Hi,\n\n';
         const emailMessage = `
+            ${greeting}
             A new job application has been received:
             
             Role: ${role}
@@ -216,7 +230,7 @@ app.post('/api/application', async (req, res) => {
         `;
 
         // Send email in background without awaiting
-        sendNotificationEmail(emailSubject, emailMessage)
+        sendNotificationEmail(emailSubject, emailMessage, recipient)
             .then(() => console.log('Email sent successfully'))
             .catch(err => console.error('Error sending email:', err));
 
@@ -287,6 +301,71 @@ app.post('/api/track-visit', async (req, res) => {
     } catch (err) {
         console.error('Error tracking visit:', err);
         res.status(500).json({ error: 'Error tracking visit' });
+    }
+});
+
+app.post('/api/find-visits', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        if (
+            username !== process.env.API_USERNAME ||
+            password !== process.env.API_PASSWORD
+        ) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        // Fetch all visits from MongoDB
+        const visits = await Visit.find({});
+        // Only include visits with valid origin, country, region, and city
+        const visitList = visits
+            .map(visit => ({
+                origin: visit.origin || 'Unknown',
+                country: visit.location?.country || 'Unknown',
+                region: visit.location?.region || 'Unknown',
+                city: visit.location?.city || 'Unknown',
+                count: visit.visitCount || 0,
+                lastVisitDate: visit.lastVisit ? convertIst(visit.lastVisit) : null
+            }))
+            .filter(v => v.origin !== 'Unknown' && v.country !== 'Unknown' && v.region !== 'Unknown' && v.city !== 'Unknown');
+
+        // Get all unique origins, ignoring 'Unknown'
+        const Origins = [...new Set(visitList.map(v => v.origin))].filter(origin => origin !== 'Unknown');
+
+        // Aggregate countries -> regions -> cities
+        const countryMap = {};
+        visitList.forEach(v => {
+            const { country, region, city } = v;
+            if (!countryMap[country]) {
+                countryMap[country] = { countryName: country, count: 0, regions: {} };
+            }
+            countryMap[country].count += 1;
+            if (!countryMap[country].regions[region]) {
+                countryMap[country].regions[region] = { regionName: region, count: 0, cities: {} };
+            }
+            countryMap[country].regions[region].count += 1;
+            if (!countryMap[country].regions[region].cities[city]) {
+                countryMap[country].regions[region].cities[city] = { cityName: city, count: 0 };
+            }
+            countryMap[country].regions[region].cities[city].count += 1;
+        });
+        const countries = Object.values(countryMap).map(country => ({
+            countryName: country.countryName,
+            count: country.count,
+            regions: Object.values(country.regions).map(region => ({
+                regionName: region.regionName,
+                count: region.count,
+                cities: Object.values(region.cities)
+            }))
+        }));
+
+        return res.status(200).json({
+            visits: visitList,
+            Origins,
+            countries
+        });
+    } catch (err) {
+        console.error('Error in /api/find-visits:', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
