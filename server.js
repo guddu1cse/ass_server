@@ -193,7 +193,7 @@ app.post('/api/application', async (req, res) => {
             recipient = process.env.MAIL_TO_GUDDU;
             recipientName = 'Guddu';
         } else if (originHeader.includes('lucky')) {
-            recipient = process.env.MAIL_TO_LUCY;
+            recipient = process.env.MAIL_TO_LUCKY;
             recipientName = 'Lucky';
         }
 
