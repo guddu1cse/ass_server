@@ -12,6 +12,8 @@ let serverStartRequestTime = null;
 let serverStartedResponseTime = null;
 let serverErrorTime = null;
 let serverError = null;
+let IP_KEYS = process.env.IP_KEY.trim().split(",");
+let lastUsedKey = 0;
 
 // middleware
 app.use(cors({
@@ -140,33 +142,42 @@ async function fetchData() {
     }
 }
 
+function getIpKey() {
+    const key = IP_KEYS[lastUsedKey];
+    lastUsedKey = (lastUsedKey + 1) % IP_KEYS.length;
+    console.log(lastUsedKey, key);
+    return key;
+}
+
 async function getGeoLocation(ip) {
     const cleanIp = ip.split(',')[0].trim().replace(/^::ffff:/, '');
 
-    try {
-        const response = await fetch(`https://api.ipapi.com/api/${cleanIp}?access_key=${process.env.IP_KEY}`);
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            const response = await fetch(`https://api.ipapi.com/api/${cleanIp}?access_key=${getIpKey()}`);
 
-        if (!response.ok) {
-            throw new Error(`API request failed with status ${response.status}`);
+            if (response.ok) {
+                const data = await response.json();
+                return {
+                    country: data.country_name || 'Unknown',
+                    city: data.city || 'Unknown',
+                    region: data.region_name || 'Unknown',
+                    isp: data.org || 'Unknown'
+                };
+            } else {
+                console.warn(`Attempt ${attempt + 1}: API request failed with status ${response.status}`);
+            }
+        } catch (error) {
+            console.error(`Attempt ${attempt + 1}: Error fetching geolocation:`, error.message);
         }
-
-        const data = await response.json();
-
-        return {
-            country: data.country_name || 'Unknown',
-            city: data.city || 'Unknown',
-            region: data.region_name || 'Unknown',
-            isp: data.org || 'Unknown'
-        };
-    } catch (error) {
-        console.error('Error fetching geolocation:', error.message);
-        return {
-            country: 'Unknown',
-            city: 'Unknown',
-            region: 'Unknown',
-            isp: 'Unknown'
-        };
     }
+    // If all attempts fail
+    return {
+        country: 'failed to fetch',
+        city: 'failed to fetch',
+        region: 'failed to fetch',
+        isp: 'failed to fetch'
+    };
 }
 
 
@@ -214,23 +225,19 @@ app.post('/api/application', async (req, res) => {
         // Send notification email asynchronously
         const emailSubject = 'New Job Application Received';
         const greeting = recipientName ? `Hi ${recipientName},\n\n` : 'Hi,\n\n';
-        const emailMessage = `
-            ${greeting}
-            A new job application has been received:
-            
-            Role: ${role}
-            Organization: ${organization}
-            HR Name: ${hrName}
-            Email: ${email}
-            Phone: ${phone}
-            Salary: ${salary || 'Not specified'}
-            
-            Description:
-            ${description}
-        `;
+        const emailMessageObj = {
+            greeting,
+            role,
+            organization,
+            hrName,
+            email,
+            phone,
+            salary: salary || 'Not specified',
+            description
+        };
 
         // Send email in background without awaiting
-        sendNotificationEmail(emailSubject, emailMessage, recipient)
+        sendNotificationEmail(emailSubject, emailMessageObj, recipient)
             .then(() => console.log('Email sent successfully'))
             .catch(err => console.error('Error sending email:', err));
 
