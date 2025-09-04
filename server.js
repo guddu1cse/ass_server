@@ -13,6 +13,7 @@ let serverStartedResponseTime = null;
 let serverErrorTime = null;
 let serverError = null;
 let IP_KEYS = process.env.IP_KEY.trim().split(",");
+let baseUrlAi = process.env.BASE_URL_AI;
 let lastUsedKey = 0;
 
 // middleware
@@ -373,6 +374,23 @@ app.post('/api/find-visits', async (req, res) => {
     } catch (err) {
         console.error('Error in /api/find-visits:', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/api/chat/prompt', async (req, res) => {
+    const { prompt, authToken } = req.query;
+    const origin = req.headers['origin'] || req.headers['referer'] || 'Unknown';
+
+    const url = `${baseUrlAi}/api/chat/prompt?authToken=${authToken}&adminOrigin=${origin}&prompt=${prompt}`;
+    try {
+        console.log('Forwarding prompt to AI service:', url);
+        const response = await fetch(url);
+        const data = await response.json();
+        console.log('AI service response:', data);
+        res.status(200).json(data);
+    } catch (err) {
+        console.error('Error in /api/chat/prompt:', err);
+        res.status(500).json({ error: 'Internal server error. Check AI service status and try again later.' });
     }
 });
 
