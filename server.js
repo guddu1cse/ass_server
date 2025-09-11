@@ -6,7 +6,9 @@ const geoip = require('geoip-lite');
 const Question = require('./models/Question');
 const Application = require('./models/Application');
 const Visit = require('./models/Visit');
+const Conversession = require('./models/Conversession');
 const { sendNotificationEmail } = require('./utils/mailService');
+const { saveConverSession } = require('./utils/ConverseSessionUtils');
 const app = express();
 let serverStartRequestTime = null;
 let serverStartedResponseTime = null;
@@ -378,7 +380,7 @@ app.post('/api/find-visits', async (req, res) => {
 });
 
 app.get('/api/chat/prompt', async (req, res) => {
-    const { prompt, authToken } = req.query;
+    const { prompt, authToken, sessionId } = req.query;
     const origin = req.headers['origin'] || req.headers['referer'] || 'Unknown';
 
     const url = `${baseUrlAi}/api/chat/prompt?authToken=${authToken}&adminOrigin=${origin}&prompt=${prompt}`;
@@ -386,6 +388,7 @@ app.get('/api/chat/prompt', async (req, res) => {
         console.log('Forwarding prompt to AI service:', url);
         const response = await fetch(url);
         const data = await response.json();
+        saveConverSession(prompt, data.data, sessionId, origin);
         console.log('AI service response:', data);
         res.status(200).json(data);
     } catch (err) {
