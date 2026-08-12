@@ -9,12 +9,14 @@ const Visit = require('./models/Visit');
 const Conversession = require('./models/Conversession');
 const { sendNotificationEmail } = require('./utils/mailService');
 const { saveConverSession } = require('./utils/ConverseSessionUtils');
+const { initLeetCodeScheduler } = require('./utils/leetcodeScheduler');
+const LeetCodeStats = require('./models/LeetCodeStats');
 const app = express();
 let serverStartRequestTime = null;
 let serverStartedResponseTime = null;
 let serverErrorTime = null;
 let serverError = null;
-let IP_KEYS = process.env.IP_KEY.trim().split(",");
+let IP_KEYS = (process.env.IP_KEY || "").trim().split(",");
 let baseUrlAi = process.env.BASE_URL_AI;
 let lastUsedKey = 0;
 
@@ -27,12 +29,41 @@ app.use(cors({
 app.use(express.json());
 
 // db config
-mongoose.connect(`${process.env.MONGODB_URI}`, {
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ass_server';
+mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true
 })
-    .then(() => console.log('db connection successful'))
+    .then(() => {
+        console.log('db connection successful');
+        // Initialize Background Schedulers
+        initLeetCodeScheduler();
+    })
     .catch(err => console.error('unable to connect to MongoDB', err));
+
+// ==========================================
+// LEETCODE API ROUTE (BFF Caching Layer)
+// ==========================================
+app.get('/api/leetcode/:username', async (req, res) => {
+    try {
+        const { username } = req.params;
+        const stats = await LeetCodeStats.findOne({ username: username });
+        
+        if (!stats) {
+            return res.status(404).json({ error: 'Stats not found in database. The scheduler might be fetching them, try again soon.' });
+        }
+        
+        // Return combined format for the frontend
+        res.json({
+            profileData: stats.profileData,
+            contestData: stats.contestData,
+            lastUpdated: stats.lastUpdated
+        });
+    } catch (err) {
+        console.error('Error fetching LeetCode stats from DB:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 
 app.get('/api/questions', async (req, res) => {
@@ -383,7 +414,7 @@ app.get('/api/chat/prompt', async (req, res) => {
     const { prompt, authToken, sessionId } = req.query;
     const origin = req.headers['origin'] || req.headers['referer'] || 'Unknown';
 
-    const url = `${baseUrlAi}/api/chat/prompt?authToken=${authToken}&adminOrigin=${origin}&prompt=${prompt}`;
+    const url = `${baseUrlAi}/api/chat/prompt?authToken=${authToken}&adminOrigin=${origin}&prompt=${encodeURIComponent(prompt)}`;
     try {
         console.log('Forwarding prompt to AI service:', url);
         const response = await fetch(url);
@@ -397,7 +428,55 @@ app.get('/api/chat/prompt', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 5000;
+app.get('/api/chat/stream', async (req, res) => {
+    const { prompt, authToken, sessionId, resumeUrl } = req.query;
+    const origin = req.headers['origin'] || req.headers['referer'] || 'Unknown';
+
+    let url = `${baseUrlAi}/api/chat/stream?authToken=${authToken}&adminOrigin=${origin}&prompt=${encodeURIComponent(prompt)}`;
+    if (resumeUrl) {
+        url += `&resumeUrl=${encodeURIComponent(resumeUrl)}`;
+    }
+    try {
+        console.log('Forwarding stream request to AI service:', url);
+        
+        // Setup headers for SSE
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`AI Service returned ${response.status}`);
+        }
+        
+        let accumulatedResponse = '';
+        
+        for await (const chunk of response.body) {
+            const textChunk = Buffer.from(chunk).toString('utf-8');
+            res.write(textChunk);
+            
+            const lines = textChunk.split('\n');
+            for (const line of lines) {
+                if (line.startsWith('data:')) {
+                    accumulatedResponse += line.substring(5).trim() + " ";
+                }
+            }
+        }
+        
+        res.end();
+        
+        // Save to DB asynchronously
+        saveConverSession(prompt, accumulatedResponse.trim(), sessionId, origin);
+        
+    } catch (err) {
+        console.error('Error in /api/chat/stream:', err);
+        res.write(`data: [ERROR] Failed to fetch stream\n\n`);
+        res.end();
+    }
+});
+
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
     fetchData();
